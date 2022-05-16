@@ -8,93 +8,59 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDoWithHandler_WithPanic(t *testing.T) {
-	handled := false
-
-	h := func(reason interface{}) {
-		assert.Equal(t, 42, reason)
-		handled = true
+func TestHandler_Go(t *testing.T) {
+	testCases := map[string]struct {
+		fn     func()
+		called bool
+		reason interface{}
+		waiter waiter
+	}{
+		"ordinary": {
+			fn:     func() {},
+			called: false,
+			reason: nil,
+			waiter: newWaiter(1),
+		},
+		"panic": {
+			fn:     func() { panic(42) },
+			called: true,
+			reason: 42,
+			waiter: newWaiter(2),
+		},
+		"goexit": {
+			fn:     func() { runtime.Goexit() },
+			called: true,
+			reason: nil,
+			waiter: newWaiter(2),
+		},
 	}
-	DoWithHandler(h, func() {
-		panic(42)
-	})
-	assert.True(t, handled)
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			var called bool = false
+			var reason any = nil
+			Handler(func(r any) {
+				called = true
+				reason = r
+				testCase.waiter.Done()
+			}).Go(func() {
+				defer testCase.waiter.Done()
+				testCase.fn()
+			})
+			testCase.waiter.Wait()
+			assert.Equal(t, testCase.called, called)
+			assert.Equal(t, testCase.reason, reason)
+		})
+	}
 }
 
-func TestDoWithHandler_WithGoexit(t *testing.T) {
-	handled := false
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	h := func(reason interface{}) {
-		assert.Nil(t, reason)
-		handled = true
-		wg.Done()
-	}
-	go DoWithHandler(h, func() {
-		runtime.Goexit()
-	})
-	wg.Wait()
-	assert.True(t, handled)
+type waiter interface {
+	Done()
+	Wait()
 }
 
-func TestDoWithHandler1(t *testing.T) {
-	handled := false
-
-	h := func(reason interface{}) {
-		handled = true
-	}
-	result := DoWithHandler1(h, func() int {
-		return 42
-	})
-
-	assert.Equal(t, 42, result)
-	assert.False(t, handled)
-}
-
-func TestDoWithHandler1_WithPanic(t *testing.T) {
-	handled := false
-
-	h := func(reason interface{}) {
-		assert.Equal(t, 42, reason)
-		handled = true
-	}
-	result := DoWithHandler1(h, func() int {
-		panic(42)
-	})
-
-	assert.Equal(t, 0, result)
-	assert.True(t, handled)
-}
-
-func TestDoWithHandler2(t *testing.T) {
-	handled := false
-
-	h := func(reason interface{}) {
-		handled = true
-	}
-	result1, result2 := DoWithHandler2(h, func() (int, string) {
-		return 42, "towel"
-	})
-
-	assert.Equal(t, 42, result1)
-	assert.Equal(t, "towel", result2)
-	assert.False(t, handled)
-}
-
-func TestDoWithHandler2_WithPanic(t *testing.T) {
-	handled := false
-
-	h := func(reason interface{}) {
-		assert.Equal(t, 42, reason)
-		handled = true
-	}
-	result1, result2 := DoWithHandler2(h, func() (int, string) {
-		panic(42)
-	})
-
-	assert.Equal(t, 0, result1)
-	assert.Equal(t, "", result2)
-	assert.True(t, handled)
+func newWaiter(c int) waiter {
+	w := new(sync.WaitGroup)
+	w.Add(c)
+	return w
 }

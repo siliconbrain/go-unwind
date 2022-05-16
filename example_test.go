@@ -1,31 +1,26 @@
-# go-unwind
+package unwind_test
 
-A tool for Golang to handle (irregular) stack unwinding.
-
-## Usage
-
-Add `go-unwind` to your project with
-```sh
-go get github.com/siliconbrain/go-unwind
-```
-
-Use the unwind handler in your code like
-```go
 import (
 	"fmt"
+	"strings"
 	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/siliconbrain/go-unwind"
 )
 
-func main() {
+func TestReadmeExample(t *testing.T) {
+	out := &strings.Builder{}
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 	h := unwind.Handler(func(reason interface{}) {
 		if reason != nil {
-			fmt.Println("panic with reason:", reason)
+			fmt.Fprintln(out, "panic with reason:", reason)
 		} else {
-			fmt.Println("unrecoverable unwind")
+			fmt.Fprintln(out, "unrecoverable unwind")
 		}
 		wg.Done()
 	})
@@ -34,6 +29,7 @@ func main() {
 		wg.Done()
 	})
 	wg.Wait()
+	assert.Equal(t, "panic with reason: you forgot your towel\n", out.String())
 }
 
 func panickyFunc(v int) {
@@ -41,4 +37,3 @@ func panickyFunc(v int) {
 		panic("you forgot your towel")
 	}
 }
-```
